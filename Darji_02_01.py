@@ -5,17 +5,12 @@
 
 import numpy as np
 import torch
-from torch import nn
-from torch.optim import SGD
-from torch.utils.data import DataLoader, TensorDataset
 
 def multi_layer_nn_torch(x_train, y_train, layers, activations, alpha=0.01, batch_size=32, epochs=0,
                          loss_func='mse', val_split=(0.8, 1.0), seed=7321):
-    import torch
-
     # Initialize weights
     if isinstance(layers[0], int):
-        np.random.seed(seed)
+        # Do not set the seed here; test cases will handle random number seeding.
         weights = []
         for i in range(len(layers)):
             if i == 0:
@@ -82,18 +77,21 @@ def multi_layer_nn_torch(x_train, y_train, layers, activations, alpha=0.01, batc
             if loss_func.lower() == 'mse':
                 loss = torch.mean((y_pred - y_batch) ** 2)
             elif loss_func.lower() == 'ce':
+                # Implement CE loss manually
                 exp_scores = torch.exp(y_pred)
                 probs = exp_scores / torch.sum(exp_scores, dim=1, keepdim=True)
-                correct_logprobs = -torch.log(probs[torch.arange(y_batch.shape[0]), torch.argmax(y_batch, dim=1)] + 1e-15)
-                loss = torch.sum(correct_logprobs) / y_batch.shape[0]
+                correct_class = torch.argmax(y_batch, dim=1)
+                correct_logprobs = -torch.log(probs[torch.arange(y_batch.shape[0]), correct_class] + 1e-15)
+                loss = torch.mean(correct_logprobs)
             elif loss_func.lower() == 'svm':
+                # Implement SVM loss manually
                 y_true = torch.argmax(y_batch, dim=1)
-                batch_size = y_pred.shape[0]
-                correct_class_scores = y_pred[torch.arange(batch_size), y_true].view(-1, 1)
+                batch_size_curr = y_pred.shape[0]
+                correct_class_scores = y_pred[torch.arange(batch_size_curr), y_true].view(-1, 1)
                 margins = y_pred - correct_class_scores + 1.0
-                margins[torch.arange(batch_size), y_true] = 0
+                margins[torch.arange(batch_size_curr), y_true] = 0
                 margins = torch.clamp(margins, min=0)
-                loss = torch.sum(margins) / batch_size
+                loss = torch.mean(torch.sum(margins, dim=1))
             else:
                 raise ValueError(f"Unknown loss function: {loss_func}")
 
@@ -106,46 +104,48 @@ def multi_layer_nn_torch(x_train, y_train, layers, activations, alpha=0.01, batc
                     W -= alpha * W.grad
                     W.grad.zero_()
 
-        # Compute validation error
+        # Compute validation error after each epoch
         if epochs > 0:
-            input = x_val
-            for idx, (W, activation) in enumerate(zip(weights_torch, activations)):
-                ones = torch.ones(input.shape[0], 1)
-                input_with_bias = torch.cat((ones, input), dim=1)
-                z = torch.mm(input_with_bias, W)
+            with torch.no_grad():
+                input = x_val
+                for idx, (W, activation) in enumerate(zip(weights_torch, activations)):
+                    ones = torch.ones(input.shape[0], 1)
+                    input_with_bias = torch.cat((ones, input), dim=1)
+                    z = torch.mm(input_with_bias, W)
 
-                if activation.lower() == 'linear':
-                    a = z
-                elif activation.lower() == 'sigmoid':
-                    a = 1 / (1 + torch.exp(-z))
-                elif activation.lower() == 'relu':
-                    a = torch.clamp(z, min=0)
-                else:
-                    raise ValueError(f"Unknown activation function: {activation}")
-                input = a
+                    if activation.lower() == 'linear':
+                        a = z
+                    elif activation.lower() == 'sigmoid':
+                        a = 1 / (1 + torch.exp(-z))
+                    elif activation.lower() == 'relu':
+                        a = torch.clamp(z, min=0)
+                    else:
+                        raise ValueError(f"Unknown activation function: {activation}")
+                    input = a
 
-            y_pred_val = input
-            error = torch.mean(torch.abs(y_pred_val - y_val)).item()
-            errors.append(error)
+                y_pred_val = input
+                error = torch.mean(torch.abs(y_pred_val - y_val)).item()
+                errors.append(error)
 
     # Final output on validation set
-    input = x_val
-    for idx, (W, activation) in enumerate(zip(weights_torch, activations)):
-        ones = torch.ones(input.shape[0], 1)
-        input_with_bias = torch.cat((ones, input), dim=1)
-        z = torch.mm(input_with_bias, W)
+    with torch.no_grad():
+        input = x_val
+        for idx, (W, activation) in enumerate(zip(weights_torch, activations)):
+            ones = torch.ones(input.shape[0], 1)
+            input_with_bias = torch.cat((ones, input), dim=1)
+            z = torch.mm(input_with_bias, W)
 
-        if activation.lower() == 'linear':
-            a = z
-        elif activation.lower() == 'sigmoid':
-            a = 1 / (1 + torch.exp(-z))
-        elif activation.lower() == 'relu':
-            a = torch.clamp(z, min=0)
-        else:
-            raise ValueError(f"Unknown activation function: {activation}")
-        input = a
+            if activation.lower() == 'linear':
+                a = z
+            elif activation.lower() == 'sigmoid':
+                a = 1 / (1 + torch.exp(-z))
+            elif activation.lower() == 'relu':
+                a = torch.clamp(z, min=0)
+            else:
+                raise ValueError(f"Unknown activation function: {activation}")
+            input = a
 
-    y_pred_val = input.detach().numpy()
+        y_pred_val = input.detach().numpy()
 
     # Prepare weight matrices to return
     weight_matrices = [W.detach().numpy() for W in weights_torch]
