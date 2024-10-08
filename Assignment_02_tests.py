@@ -2,7 +2,7 @@ import numpy as np
 # Modify the line below based on your last name
 # for example:
 # from Islam_02_01 import multi_layer_nn_torch
-from Kamangar_02_01 import multi_layer_nn_torch
+from Darji_02_01 import multi_layer_nn_torch
 
 # These test modules have been converted from Tensorflow to PyTorch by  Islam, SM Mazharul. 2024_09_19
 def get_data():
